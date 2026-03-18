@@ -2,7 +2,7 @@ import json
 from typing import Dict, Any, List
 from venv import logger
 from src.core.constants import Constants
-from src.models.claude import ClaudeMessagesRequest, ClaudeMessage
+from src.models.claude import ClaudeMessagesRequest, ClaudeMessage, ClaudeBuiltinTool
 from src.core.config import config
 import logging
 
@@ -74,12 +74,15 @@ def convert_claude_to_openai(
         i += 1
 
     # Build OpenAI request
+    # 根据实际使用的模型获取 max_tokens_limit（只有 auto 模式下会根据模型映射）
+    max_tokens_limit = config.get_max_tokens_for_model(openai_model)
+    logger.info(f"Model mapping: {claude_request.model} -> {openai_model}, max_tokens_limit={max_tokens_limit} (auto_mode={config.auto_tokens_mode})")
     openai_request = {
         "model": openai_model,
         "messages": openai_messages,
         "max_tokens": min(
             max(claude_request.max_tokens, config.min_tokens_limit),
-            config.max_tokens_limit,
+            max_tokens_limit,
         ),
         "temperature": claude_request.temperature,
         "stream": claude_request.stream,
@@ -93,10 +96,14 @@ def convert_claude_to_openai(
     if claude_request.top_p is not None:
         openai_request["top_p"] = claude_request.top_p
 
-    # Convert tools
+    # Convert tools (skip built-in tools like web_search, which have no OpenAI equivalent)
     if claude_request.tools:
         openai_tools = []
         for tool in claude_request.tools:
+            # Skip built-in tools (e.g., web_search_20250305) — they don't map to OpenAI functions
+            if isinstance(tool, ClaudeBuiltinTool):
+                logger.debug(f"Skipping built-in tool: {tool.type}/{tool.name}")
+                continue
             if tool.name and tool.name.strip():
                 openai_tools.append(
                     {
@@ -104,7 +111,7 @@ def convert_claude_to_openai(
                         Constants.TOOL_FUNCTION: {
                             "name": tool.name,
                             "description": tool.description or "",
-                            "parameters": tool.input_schema,
+                            "parameters": normalize_tool_parameters(tool.input_schema),
                         },
                     }
                 )
@@ -148,7 +155,7 @@ def convert_claude_user_message(msg: ClaudeMessage) -> Dict[str, Any]:
                 isinstance(block.source, dict)
                 and block.source.get("type") == "base64"
                 and "media_type" in block.source
-                and "data" in block.source
+                and block.source.get("data")
             ):
                 openai_content.append(
                     {
@@ -225,8 +232,27 @@ def convert_claude_tool_results(msg: ClaudeMessage) -> List[Dict[str, Any]]:
     return tool_messages
 
 
+def normalize_tool_parameters(input_schema: dict) -> dict:
+    """
+    规范化工具参数，确保符合 Google Vertex AI 的要求。
+
+    Google Vertex AI 要求 parameters 必须是 type: "object" 且包含 properties 字段。
+
+    Args:
+        input_schema: Claude 工具的 input_schema 字典，可能为 None
+
+    Returns:
+        规范化后的 parameters 字典
+    """
+    parameters = (input_schema or {}).copy()
+    if "type" not in parameters:
+        parameters["type"] = "object"
+    if "properties" not in parameters:
+        parameters["properties"] = {}
+    return parameters
+
+
 def parse_tool_result_content(content):
-    """Parse and normalize tool result content into a string format."""
     if content is None:
         return "No content provided"
 

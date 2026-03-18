@@ -24,6 +24,7 @@ openai_client = OpenAIClient(
     config.openai_api_key,
     config.openai_base_url,
     config.request_timeout,
+    config.read_timeout,
     api_version=config.azure_api_version,
     custom_headers=custom_headers,
 )
@@ -38,8 +39,8 @@ async def validate_api_key(x_api_key: Optional[str] = Header(None), authorizatio
     elif authorization and authorization.startswith("Bearer "):
         client_api_key = authorization.replace("Bearer ", "")
     
-    # Skip validation if ANTHROPIC_API_KEY is not set in the environment
-    if not config.anthropic_api_key:
+    # Skip validation if PROXY_API_KEY is not set in the environment
+    if not config.client_api_key:
         return
         
     # Validate the client API key
@@ -47,7 +48,7 @@ async def validate_api_key(x_api_key: Optional[str] = Header(None), authorizatio
         logger.warning(f"Invalid API key provided by client")
         raise HTTPException(
             status_code=401,
-            detail="Invalid API key. Please provide a valid Anthropic API key."
+            detail="Invalid API key. Please provide a valid Proxy API key."
         )
 
 @router.post("/v1/messages")
@@ -168,7 +169,7 @@ async def health_check():
         "timestamp": datetime.now().isoformat(),
         "openai_api_configured": bool(config.openai_api_key),
         "api_key_valid": config.validate_api_key(),
-        "client_api_key_validation": bool(config.anthropic_api_key),
+        "client_api_key_validation": bool(config.client_api_key),
     }
 
 
@@ -221,7 +222,7 @@ async def root():
             "openai_base_url": config.openai_base_url,
             "max_tokens_limit": config.max_tokens_limit,
             "api_key_configured": bool(config.openai_api_key),
-            "client_api_key_validation": bool(config.anthropic_api_key),
+            "client_api_key_validation": bool(config.client_api_key),
             "big_model": config.big_model,
             "small_model": config.small_model,
         },

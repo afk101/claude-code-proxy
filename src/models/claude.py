@@ -29,9 +29,23 @@ class ClaudeMessage(BaseModel):
     content: Union[str, List[Union[ClaudeContentBlockText, ClaudeContentBlockImage, ClaudeContentBlockToolUse, ClaudeContentBlockToolResult]]]
 
 class ClaudeTool(BaseModel):
+    """Custom tool with input_schema (e.g., function-calling tools)."""
     name: str
     description: Optional[str] = None
     input_schema: Dict[str, Any]
+
+
+class ClaudeBuiltinTool(BaseModel):
+    """Built-in tool (e.g., web_search_20250305) without input_schema."""
+    type: str
+    name: str
+    max_uses: Optional[int] = None
+    # Allow additional fields for forward compatibility
+    model_config = {"extra": "allow"}
+
+
+# Union type: tools list can contain either custom tools or built-in tools
+ClaudeToolUnion = Union[ClaudeTool, ClaudeBuiltinTool]
 
 class ClaudeThinkingConfig(BaseModel):
     enabled: bool = True
@@ -47,7 +61,7 @@ class ClaudeMessagesRequest(BaseModel):
     top_p: Optional[float] = None
     top_k: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
-    tools: Optional[List[ClaudeTool]] = None
+    tools: Optional[List[ClaudeToolUnion]] = None
     tool_choice: Optional[Dict[str, Any]] = None
     thinking: Optional[ClaudeThinkingConfig] = None
 
@@ -55,6 +69,6 @@ class ClaudeTokenCountRequest(BaseModel):
     model: str
     messages: List[ClaudeMessage]
     system: Optional[Union[str, List[ClaudeSystemContent]]] = None
-    tools: Optional[List[ClaudeTool]] = None
+    tools: Optional[List[ClaudeToolUnion]] = None
     thinking: Optional[ClaudeThinkingConfig] = None
     tool_choice: Optional[Dict[str, Any]] = None

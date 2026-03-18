@@ -1,11 +1,15 @@
-from src.core.config import config
+from src.core.config import config, MODEL_TOKENS_MAP
 
 class ModelManager:
     def __init__(self, config):
         self.config = config
-    
+
     def map_claude_model_to_openai(self, claude_model: str) -> str:
         """Map Claude model names to OpenAI model names based on BIG/SMALL pattern"""
+        # 如果 claude_model 匹配 MODEL_TOKENS_MAP 中的任意一个键，直接返回（适配ClaudeCodeAgent的model直接调用）
+        if claude_model in MODEL_TOKENS_MAP:
+            return claude_model
+
         # If it's already an OpenAI model, return as-is
         if claude_model.startswith("gpt-") or claude_model.startswith("o1-"):
             return claude_model

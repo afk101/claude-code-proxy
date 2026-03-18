@@ -1,5 +1,6 @@
 import json
 import uuid
+import traceback
 from fastapi import HTTPException, Request
 from src.core.constants import Constants
 from src.models.claude import ClaudeMessagesRequest
@@ -161,20 +162,11 @@ async def convert_openai_streaming_to_claude(
                                 
                                 yield f"event: {Constants.EVENT_CONTENT_BLOCK_START}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_START, 'index': claude_index, 'content_block': {'type': Constants.CONTENT_TOOL_USE, 'id': tool_call['id'], 'name': tool_call['name'], 'input': {}}}, ensure_ascii=False)}\n\n"
                             
-                            # Handle function arguments
+                            # Handle function arguments — forward each fragment immediately
                             if "arguments" in function_data and tool_call["started"] and function_data["arguments"] is not None:
-                                tool_call["args_buffer"] += function_data["arguments"]
-                                
-                                # Try to parse complete JSON and send delta when we have valid JSON
-                                try:
-                                    json.loads(tool_call["args_buffer"])
-                                    # If parsing succeeds and we haven't sent this JSON yet
-                                    if not tool_call["json_sent"]:
-                                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': tool_call['claude_index'], 'delta': {'type': Constants.DELTA_INPUT_JSON, 'partial_json': tool_call['args_buffer']}}, ensure_ascii=False)}\n\n"
-                                        tool_call["json_sent"] = True
-                                except json.JSONDecodeError:
-                                    # JSON is incomplete, continue accumulating
-                                    pass
+                                args_chunk = function_data["arguments"]
+                                tool_call["args_buffer"] += args_chunk
+                                yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': tool_call['claude_index'], 'delta': {'type': Constants.DELTA_INPUT_JSON, 'partial_json': args_chunk}}, ensure_ascii=False)}\n\n"
 
                     # Handle finish reason
                     if finish_reason:
@@ -190,9 +182,7 @@ async def convert_openai_streaming_to_claude(
 
     except Exception as e:
         # Handle any streaming errors gracefully
-        logger.error(f"Streaming error: {e}")
-        import traceback
-
+        logger.error(f"Streaming error: {type(e).__name__}: {e}")
         logger.error(traceback.format_exc())
         error_event = {
             "type": "error",
@@ -320,20 +310,11 @@ async def convert_openai_streaming_to_claude_with_cancellation(
                                 
                                 yield f"event: {Constants.EVENT_CONTENT_BLOCK_START}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_START, 'index': claude_index, 'content_block': {'type': Constants.CONTENT_TOOL_USE, 'id': tool_call['id'], 'name': tool_call['name'], 'input': {}}}, ensure_ascii=False)}\n\n"
                             
-                            # Handle function arguments
+                            # Handle function arguments — forward each fragment immediately
                             if "arguments" in function_data and tool_call["started"] and function_data["arguments"] is not None:
-                                tool_call["args_buffer"] += function_data["arguments"]
-                                
-                                # Try to parse complete JSON and send delta when we have valid JSON
-                                try:
-                                    json.loads(tool_call["args_buffer"])
-                                    # If parsing succeeds and we haven't sent this JSON yet
-                                    if not tool_call["json_sent"]:
-                                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': tool_call['claude_index'], 'delta': {'type': Constants.DELTA_INPUT_JSON, 'partial_json': tool_call['args_buffer']}}, ensure_ascii=False)}\n\n"
-                                        tool_call["json_sent"] = True
-                                except json.JSONDecodeError:
-                                    # JSON is incomplete, continue accumulating
-                                    pass
+                                args_chunk = function_data["arguments"]
+                                tool_call["args_buffer"] += args_chunk
+                                yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': tool_call['claude_index'], 'delta': {'type': Constants.DELTA_INPUT_JSON, 'partial_json': args_chunk}}, ensure_ascii=False)}\n\n"
 
                     # Handle finish reason
                     if finish_reason:
@@ -360,12 +341,22 @@ async def convert_openai_streaming_to_claude_with_cancellation(
             yield f"event: error\ndata: {json.dumps(error_event, ensure_ascii=False)}\n\n"
             return
         else:
-            raise
+            # 流式传输已经开始，不能再 raise HTTPException，否则会导致
+            # "Caught handled exception, but response already started" 错误
+            # 将错误转为 SSE error 事件发送给客户端
+            logger.error(f"HTTPException during streaming: status={e.status_code}, detail={e.detail}\n{traceback.format_exc()}")
+            error_event = {
+                "type": "error",
+                "error": {
+                    "type": "api_error",
+                    "message": f"Streaming error (HTTP {e.status_code}): {e.detail}",
+                },
+            }
+            yield f"event: error\ndata: {json.dumps(error_event, ensure_ascii=False)}\n\n"
+            return
     except Exception as e:
         # Handle any streaming errors gracefully
-        logger.error(f"Streaming error: {e}")
-        import traceback
-
+        logger.error(f"Streaming error: {type(e).__name__}: {e}")
         logger.error(traceback.format_exc())
         error_event = {
             "type": "error",

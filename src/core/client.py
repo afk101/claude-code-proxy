@@ -1,42 +1,55 @@
 import asyncio
 import json
+import logging
+import traceback
+import httpx
 from fastapi import HTTPException
 from typing import Optional, AsyncGenerator, Dict, Any
 from openai import AsyncOpenAI, AsyncAzureOpenAI
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 from openai._exceptions import APIError, RateLimitError, AuthenticationError, BadRequestError
 
+logger = logging.getLogger(__name__)
+
 class OpenAIClient:
     """Async OpenAI client with cancellation support."""
     
-    def __init__(self, api_key: str, base_url: str, timeout: int = 90, api_version: Optional[str] = None, custom_headers: Optional[Dict[str, str]] = None):
+    def __init__(self, api_key: str, base_url: str, timeout: int = 90, read_timeout: int = 240, api_version: Optional[str] = None, custom_headers: Optional[Dict[str, str]] = None):
         self.api_key = api_key
         self.base_url = base_url
         self.custom_headers = custom_headers or {}
-        
+
+        # 分别设置连接超时和读取超时，避免流式传输中途超时
+        request_timeout = httpx.Timeout(
+            connect=timeout,
+            read=read_timeout,
+            write=timeout,
+            pool=timeout,
+        )
+
         # Prepare default headers
         default_headers = {
             "Content-Type": "application/json",
             "User-Agent": "claude-proxy/1.0.0"
         }
-        
+
         # Merge custom headers with default headers
         all_headers = {**default_headers, **self.custom_headers}
-        
+
         # Detect if using Azure and instantiate the appropriate client
         if api_version:
             self.client = AsyncAzureOpenAI(
                 api_key=api_key,
                 azure_endpoint=base_url,
                 api_version=api_version,
-                timeout=timeout,
+                timeout=request_timeout,
                 default_headers=all_headers
             )
         else:
             self.client = AsyncOpenAI(
                 api_key=api_key,
                 base_url=base_url,
-                timeout=timeout,
+                timeout=request_timeout,
                 default_headers=all_headers
             )
         self.active_requests: Dict[str, asyncio.Event] = {}
@@ -84,22 +97,27 @@ class OpenAIClient:
             return completion.model_dump()
         
         except AuthenticationError as e:
+            logger.error(f"上游API认证错误: {type(e).__name__}: {e}")
             raise HTTPException(status_code=401, detail=self.classify_openai_error(str(e)))
         except RateLimitError as e:
+            logger.error(f"上游API限流: {type(e).__name__}: {e}")
             raise HTTPException(status_code=429, detail=self.classify_openai_error(str(e)))
         except BadRequestError as e:
+            logger.error(f"上游API请求错误: {type(e).__name__}: {e}")
             raise HTTPException(status_code=400, detail=self.classify_openai_error(str(e)))
         except APIError as e:
             status_code = getattr(e, 'status_code', 500)
+            logger.error(f"上游API错误: {type(e).__name__}(status={status_code}): {e}")
             raise HTTPException(status_code=status_code, detail=self.classify_openai_error(str(e)))
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-        
+            logger.error(f"非预期错误: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
+
         finally:
             # Clean up active request tracking
             if request_id and request_id in self.active_requests:
                 del self.active_requests[request_id]
-    
+
     async def create_chat_completion_stream(self, request: Dict[str, Any], request_id: Optional[str] = None) -> AsyncGenerator[str, None]:
         """Send streaming chat completion to OpenAI API with cancellation support."""
         
@@ -133,17 +151,22 @@ class OpenAIClient:
             yield "data: [DONE]"
                 
         except AuthenticationError as e:
+            logger.error(f"上游API认证错误(流式): {type(e).__name__}: {e}")
             raise HTTPException(status_code=401, detail=self.classify_openai_error(str(e)))
         except RateLimitError as e:
+            logger.error(f"上游API限流(流式): {type(e).__name__}: {e}")
             raise HTTPException(status_code=429, detail=self.classify_openai_error(str(e)))
         except BadRequestError as e:
+            logger.error(f"上游API请求错误(流式): {type(e).__name__}: {e}")
             raise HTTPException(status_code=400, detail=self.classify_openai_error(str(e)))
         except APIError as e:
             status_code = getattr(e, 'status_code', 500)
+            logger.error(f"上游API错误(流式): {type(e).__name__}(status={status_code}): {e}")
             raise HTTPException(status_code=status_code, detail=self.classify_openai_error(str(e)))
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
-        
+            logger.error(f"非预期错误(流式): {type(e).__name__}: {e}\n{traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
+
         finally:
             # Clean up active request tracking
             if request_id and request_id in self.active_requests:
