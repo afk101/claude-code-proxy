@@ -4,6 +4,7 @@ from venv import logger
 from src.core.constants import Constants
 from src.models.claude import ClaudeMessagesRequest, ClaudeMessage, ClaudeBuiltinTool
 from src.core.config import config
+from src.core.web_search import WEB_SEARCH_TOOL_DEFINITION
 import logging
 
 logger = logging.getLogger(__name__)
@@ -96,13 +97,17 @@ def convert_claude_to_openai(
     if claude_request.top_p is not None:
         openai_request["top_p"] = claude_request.top_p
 
-    # Convert tools (skip built-in tools like web_search, which have no OpenAI equivalent)
+    # Convert tools (convert built-in web_search to function tool, skip other built-ins)
     if claude_request.tools:
         openai_tools = []
         for tool in claude_request.tools:
-            # Skip built-in tools (e.g., web_search_20250305) — they don't map to OpenAI functions
             if isinstance(tool, ClaudeBuiltinTool):
-                logger.debug(f"Skipping built-in tool: {tool.type}/{tool.name}")
+                # Convert web_search built-in tool to OpenAI function tool (if enabled)
+                if config.web_search_enabled and ("web_search" in tool.name or "web_search" in tool.type):
+                    logger.info(f"Converting built-in web_search tool to function tool")
+                    openai_tools.append(WEB_SEARCH_TOOL_DEFINITION)
+                else:
+                    logger.debug(f"Skipping built-in tool: {tool.type}/{tool.name}")
                 continue
             if tool.name and tool.name.strip():
                 openai_tools.append(

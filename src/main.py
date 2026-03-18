@@ -68,6 +68,7 @@ def main():
     print(f"   Read Timeout: {config.read_timeout}s")
     print(f"   Server: {config.host}:{config.port}")
     print(f"   Client API Key Validation: {'Enabled' if config.client_api_key else 'Disabled'}")
+    print(f"   Web Search: {'Enabled (DuckDuckGo)' if config.web_search_enabled else 'Disabled'}")
     print("")
 
     # Parse log level - extract just the first word to handle comments

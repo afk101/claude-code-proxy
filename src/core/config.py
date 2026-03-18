@@ -48,6 +48,9 @@ class Config:
         # Auto tokens mode - 根据模型自动设置 MAX_TOKENS_LIMIT
         self.auto_tokens_mode = os.environ.get("AUTO_TOKENS_MODE", "").lower() == "true"
 
+        # Web search support
+        self.web_search_enabled = os.environ.get("WEB_SEARCH_ENABLED", "true").lower() != "false"
+
     def get_max_tokens_for_model(self, model: str) -> int:
         """根据模型获取 MAX_TOKENS_LIMIT
 
