@@ -11,7 +11,8 @@ MODEL_TOKENS_MAP = {
     "cortex-17": 1000000,
     "cortex-16": 400000,
     "cortex-15":400000,
-    "cortex-12":200000
+    "cortex-12":200000,
+    "glm-5":200000,
 }
 
 # Configuration
