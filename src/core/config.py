@@ -12,7 +12,7 @@ MODEL_TOKENS_MAP = {
     "cortex-16": 400000,
     "cortex-15":400000,
     "cortex-12":200000,
-    "glm-5":200000,
+    "z-ai/glm-5.1":200000,
 }
 
 # Configuration
