@@ -5,13 +5,8 @@ import sys
 MODEL_TOKENS_MAP = {
     "copilotcode-15": 200000,
     "copilotcode-14": 200000,
-    "copilotcode-13": 200000,
     "lyra-flash-11": 1000000,
-    "lyra-flash-6": 1000000,
     "cortex-17": 1000000,
-    "cortex-16": 400000,
-    "cortex-15":400000,
-    "cortex-12":200000,
     "z-ai/glm-5.1":200000,
 }
 
