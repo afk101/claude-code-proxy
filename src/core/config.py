@@ -3,6 +3,7 @@ import sys
 
 # 模型到 MAX_TOKENS_LIMIT 的映射
 MODEL_TOKENS_MAP = {
+    "copilotcode-16": 200000,
     "copilotcode-15": 200000,
     "copilotcode-14": 200000,
     "copilotcode-13": 200000,
