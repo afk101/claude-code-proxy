@@ -11,6 +11,7 @@ MODEL_TOKENS_MAP = {
     "cortex-17": 1000000,
     "z-ai/glm-5.1": 200000,
     "glm-5": 200000,
+    "moonshotai/kimi-k2.6":262144,
 }
 
 
