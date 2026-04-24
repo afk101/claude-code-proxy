@@ -1,9 +1,12 @@
 import json
 import uuid
 import traceback
+import logging
 from fastapi import HTTPException, Request
 from src.core.constants import Constants
 from src.models.claude import ClaudeMessagesRequest
+
+logger = logging.getLogger(__name__)
 
 
 def convert_openai_to_claude_response(
@@ -21,6 +24,16 @@ def convert_openai_to_claude_response(
 
     # Build Claude content blocks
     content_blocks = []
+
+    # Add reasoning content if present (专门针对 moonshotai/kimi-k2.6 模型)
+    # 转换为 Claude 的 thinking 块，以便在多轮对话中保留
+    reasoning_content = message.get("reasoning_content")
+    if reasoning_content is not None:
+        thinking_block = {
+            "type": Constants.CONTENT_THINKING,
+            "thinking": reasoning_content
+        }
+        content_blocks.append(thinking_block)
 
     # Add text content
     text_content = message.get("content")
@@ -95,9 +108,12 @@ async def convert_openai_streaming_to_claude(
 
     # Process streaming chunks
     text_block_index = 0
+    reasoning_block_index = None  # 推理内容块的索引
     tool_block_counter = 0
     current_tool_calls = {}
     final_stop_reason = Constants.STOP_END_TURN
+    reasoning_started = False  # 标记推理内容是否已开始
+    text_block_started = False  # 标记文本块是否已开始（在推理块之后）
 
     try:
         async for line in openai_stream:
@@ -122,9 +138,36 @@ async def convert_openai_streaming_to_claude(
                     delta = choice.get("delta", {})
                     finish_reason = choice.get("finish_reason")
 
+                    # Handle reasoning content delta (专门针对 moonshotai/kimi-k2.6 模型)
+                    # 将推理内容转换为 Claude 的 thinking 块
+                    if delta and "reasoning_content" in delta and delta["reasoning_content"] is not None:
+                        # 如果是第一个推理内容块，发送 content_block_start 事件
+                        if not reasoning_started:
+                            reasoning_block_index = text_block_index
+                            # 发送 thinking 块的开始事件
+                            yield f"event: {Constants.EVENT_CONTENT_BLOCK_START}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_START, 'index': reasoning_block_index, 'content_block': {'type': Constants.CONTENT_THINKING, 'thinking': ''}}, ensure_ascii=False)}\n\n"
+                            reasoning_started = True
+
+                        # 发送推理内容增量
+                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': reasoning_block_index, 'delta': {'type': Constants.DELTA_THINKING, 'thinking': delta['reasoning_content']}}, ensure_ascii=False)}\n\n"
+
                     # Handle text delta
                     if delta and "content" in delta and delta["content"] is not None:
-                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': text_block_index, 'delta': {'type': Constants.DELTA_TEXT, 'text': delta['content']}}, ensure_ascii=False)}\n\n"
+                        # 确定当前文本块的索引
+                        current_text_index = text_block_index
+                        if reasoning_started:
+                            # 如果之前有推理内容，文本块索引需要递增
+                            current_text_index = reasoning_block_index + 1
+                            # 如果这是第一次收到普通文本，需要发送新的文本块开始事件
+                            if not text_block_started:
+                                # 先关闭推理块
+                                yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': reasoning_block_index}, ensure_ascii=False)}\n\n"
+                                # 开始文本块
+                                yield f"event: {Constants.EVENT_CONTENT_BLOCK_START}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_START, 'index': current_text_index, 'content_block': {'type': Constants.CONTENT_TEXT, 'text': ''}}, ensure_ascii=False)}\n\n"
+                                text_block_started = True
+                                text_block_index = current_text_index
+
+                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': current_text_index, 'delta': {'type': Constants.DELTA_TEXT, 'text': delta['content']}}, ensure_ascii=False)}\n\n"
 
                     # Handle tool call deltas with improved incremental processing
                     if "tool_calls" in delta:
@@ -201,8 +244,14 @@ async def convert_openai_streaming_to_claude(
         return
 
     # Send final SSE events
+    # 关闭推理块（如果有）
+    if reasoning_started and reasoning_block_index is not None:
+        yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': reasoning_block_index}, ensure_ascii=False)}\n\n"
+
+    # 关闭文本块
     yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': text_block_index}, ensure_ascii=False)}\n\n"
 
+    # 关闭工具调用块
     for tool_data in current_tool_calls.values():
         if tool_data.get("started") and tool_data.get("claude_index") is not None:
             yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': tool_data['claude_index']}, ensure_ascii=False)}\n\n"
@@ -233,10 +282,13 @@ async def convert_openai_streaming_to_claude_with_cancellation(
 
     # Process streaming chunks
     text_block_index = 0
+    reasoning_block_index = None  # 推理内容块的索引
     tool_block_counter = 0
     current_tool_calls = {}
     final_stop_reason = Constants.STOP_END_TURN
     usage_data = {"input_tokens": 0, "output_tokens": 0}
+    reasoning_started = False  # 标记推理内容是否已开始
+    text_block_started = False  # 标记文本块是否已开始（在推理块之后）
 
     try:
         async for line in openai_stream:
@@ -279,9 +331,36 @@ async def convert_openai_streaming_to_claude_with_cancellation(
                     delta = choice.get("delta", {})
                     finish_reason = choice.get("finish_reason")
 
+                    # Handle reasoning content delta (专门针对 moonshotai/kimi-k2.6 模型)
+                    # 将推理内容转换为 Claude 的 thinking 块
+                    if delta and "reasoning_content" in delta and delta["reasoning_content"] is not None:
+                        # 如果是第一个推理内容块，发送 content_block_start 事件
+                        if not reasoning_started:
+                            reasoning_block_index = text_block_index
+                            # 发送 thinking 块的开始事件
+                            yield f"event: {Constants.EVENT_CONTENT_BLOCK_START}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_START, 'index': reasoning_block_index, 'content_block': {'type': Constants.CONTENT_THINKING, 'thinking': ''}}, ensure_ascii=False)}\n\n"
+                            reasoning_started = True
+
+                        # 发送推理内容增量
+                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': reasoning_block_index, 'delta': {'type': Constants.DELTA_THINKING, 'thinking': delta['reasoning_content']}}, ensure_ascii=False)}\n\n"
+
                     # Handle text delta
                     if delta and "content" in delta and delta["content"] is not None:
-                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': text_block_index, 'delta': {'type': Constants.DELTA_TEXT, 'text': delta['content']}}, ensure_ascii=False)}\n\n"
+                        # 确定当前文本块的索引
+                        current_text_index = text_block_index
+                        if reasoning_started:
+                            # 如果之前有推理内容，文本块索引需要递增
+                            current_text_index = reasoning_block_index + 1
+                            # 如果这是第一次收到普通文本，需要发送新的文本块开始事件
+                            if not text_block_started:
+                                # 先关闭推理块
+                                yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': reasoning_block_index}, ensure_ascii=False)}\n\n"
+                                # 开始文本块
+                                yield f"event: {Constants.EVENT_CONTENT_BLOCK_START}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_START, 'index': current_text_index, 'content_block': {'type': Constants.CONTENT_TEXT, 'text': ''}}, ensure_ascii=False)}\n\n"
+                                text_block_started = True
+                                text_block_index = current_text_index
+
+                        yield f"event: {Constants.EVENT_CONTENT_BLOCK_DELTA}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_DELTA, 'index': current_text_index, 'delta': {'type': Constants.DELTA_TEXT, 'text': delta['content']}}, ensure_ascii=False)}\n\n"
 
                     # Handle tool call deltas with improved incremental processing
                     if "tool_calls" in delta and delta["tool_calls"]:
@@ -384,8 +463,14 @@ async def convert_openai_streaming_to_claude_with_cancellation(
         return
 
     # Send final SSE events
+    # 关闭推理块（如果有）
+    if reasoning_started and reasoning_block_index is not None:
+        yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': reasoning_block_index}, ensure_ascii=False)}\n\n"
+
+    # 关闭文本块
     yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': text_block_index}, ensure_ascii=False)}\n\n"
 
+    # 关闭工具调用块
     for tool_data in current_tool_calls.values():
         if tool_data.get("started") and tool_data.get("claude_index") is not None:
             yield f"event: {Constants.EVENT_CONTENT_BLOCK_STOP}\ndata: {json.dumps({'type': Constants.EVENT_CONTENT_BLOCK_STOP, 'index': tool_data['claude_index']}, ensure_ascii=False)}\n\n"

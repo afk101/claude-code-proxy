@@ -1,12 +1,23 @@
 import json
 from typing import Dict, Any, List
-from venv import logger
+import logging
 from src.core.constants import Constants
 from src.models.claude import ClaudeMessagesRequest, ClaudeMessage
 from src.core.config import config
-import logging
 
 logger = logging.getLogger(__name__)
+
+
+def is_kimi_reasoning_model(model: str) -> bool:
+    """判断是否是 Kimi 推理模型（需要 reasoning_content 字段）
+
+    Args:
+        model: 实际请求的 OpenAI 模型名称
+
+    Returns:
+        True 如果是 Kimi 推理模型，否则 False
+    """
+    return "kimi-k2.6" in model
 
 
 def convert_claude_to_openai(
@@ -51,7 +62,7 @@ def convert_claude_to_openai(
             openai_message = convert_claude_user_message(msg)
             openai_messages.append(openai_message)
         elif msg.role == Constants.ROLE_ASSISTANT:
-            openai_message = convert_claude_assistant_message(msg)
+            openai_message = convert_claude_assistant_message(msg, openai_model)
             openai_messages.append(openai_message)
 
             # Check if next message contains tool results
@@ -87,6 +98,7 @@ def convert_claude_to_openai(
         "temperature": claude_request.temperature,
         "stream": claude_request.stream,
     }
+
     logger.debug(
         f"Converted Claude request to OpenAI format: {json.dumps(openai_request, indent=2, ensure_ascii=False)}"
     )
@@ -168,20 +180,32 @@ def convert_claude_user_message(msg: ClaudeMessage) -> Dict[str, Any]:
         return {"role": Constants.ROLE_USER, "content": openai_content}
 
 
-def convert_claude_assistant_message(msg: ClaudeMessage) -> Dict[str, Any]:
-    """Convert Claude assistant message to OpenAI format."""
+def convert_claude_assistant_message(msg: ClaudeMessage, openai_model: str) -> Dict[str, Any]:
+    """Convert Claude assistant message to OpenAI format.
+
+    Args:
+        msg: Claude 消息对象
+        openai_model: 实际请求的 OpenAI 模型名称（用于判断是否需要 reasoning_content）
+    """
     text_parts = []
     tool_calls = []
+    reasoning_content = None
 
     if msg.content is None:
         return {"role": Constants.ROLE_ASSISTANT, "content": None}
-    
+
     if isinstance(msg.content, str):
         return {"role": Constants.ROLE_ASSISTANT, "content": msg.content}
 
     for block in msg.content:
         if block.type == Constants.CONTENT_TEXT:
             text_parts.append(block.text)
+        elif block.type == Constants.CONTENT_THINKING:
+            # 提取 thinking 块内容作为 reasoning_content
+            if hasattr(block, 'thinking'):
+                reasoning_content = block.thinking
+            elif isinstance(block, dict) and 'thinking' in block:
+                reasoning_content = block['thinking']
         elif block.type == Constants.CONTENT_TOOL_USE:
             tool_calls.append(
                 {
@@ -195,6 +219,21 @@ def convert_claude_assistant_message(msg: ClaudeMessage) -> Dict[str, Any]:
             )
 
     openai_message = {"role": Constants.ROLE_ASSISTANT}
+
+    # Set reasoning_content if present
+    if reasoning_content is not None:
+        openai_message["reasoning_content"] = reasoning_content
+    else:
+        # 对于 Kimi 推理模型，当有 tool_calls 时，即使没有 thinking 块，也需要提供 reasoning_content
+        # 这是为了满足推理模型 API 的约束：包含 tool_calls 的 assistant 消息必须包含 reasoning_content
+        # 上游 API 不接受空字符串，使用空格作为默认值（与 LiteLLM 方案一致）
+        if is_kimi_reasoning_model(openai_model) and tool_calls:
+            default_reasoning = " "
+            openai_message["reasoning_content"] = default_reasoning
+            logger.warning(
+                f"Kimi reasoning model '{openai_model}': assistant message with tool_calls is missing "
+                f"`reasoning_content`. Injecting a placeholder ' ' to satisfy API validation."
+            )
 
     # Set content
     if text_parts:
