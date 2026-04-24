@@ -18,7 +18,7 @@ show_help() {
     echo "  ccc                              # 使用 .env 默认配置启动"
     echo "  ccc -d                           # 守护模式，服务退出后自动重启"
     echo "  ccc MAX_TOKENS_LIMIT=1000000      # 覆盖 MAX_TOKENS_LIMIT"
-    echo "  ccc MAX_TOKENS_LIMIT=1000000 BIG_MODEL=lyra-flash-6 MIDDLE_MODEL=lyra-flash-6 SMALL_MODEL=lyra-flash-6   # 覆盖多个变量"
+    echo "  ccc -auto PORT=xxx BIG_MODEL=xxx MIDDLE_MODEL=xxx SMALL_MODEL=xxx MAX_TOKENS_LIMIT=xxx"
     echo ""
     echo "可覆盖的变量 (参考 .env 文件):"
     echo "  BIG_MODEL, MIDDLE_MODEL, SMALL_MODEL"
