@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   ARG_APPEND_SYSTEM_PROMPT_FILE,
@@ -13,7 +14,11 @@ import {
  * @returns {string} 文件内容
  */
 function readPromptFile(filePath) {
-  const absolutePath = path.resolve(process.cwd(), filePath);
+  // 展开 ~ 为用户主目录，path.resolve 不会自动处理
+  const expanded = filePath.startsWith('~')
+    ? path.join(os.homedir(), filePath.slice(1))
+    : filePath;
+  const absolutePath = path.resolve(process.cwd(), expanded);
 
   if (!fs.existsSync(absolutePath)) {
     console.error(ERROR_MSG.FILE_NOT_FOUND(absolutePath));
