@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import Enquirer from 'enquirer';
 import { parseProxyModelsConf, getDefaultConfigPath } from './config-parser.js';
 import { detectRunningProxies } from './process-detector.js';
+import { resolvePromptFileArgs } from './prompt-file-resolver.js';
 
 /**
  * 连接到指定端口的代理
@@ -21,7 +22,7 @@ function connectToProxy(port, args = []) {
 
 async function main() {
   // 收集 cc 命令后的参数，透传给 claude
-  const passthrough = process.argv.slice(2);
+  const passthrough = resolvePromptFileArgs(process.argv.slice(2));
 
   // 解析配置
   const configPath = getDefaultConfigPath();
