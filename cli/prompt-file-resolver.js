@@ -9,8 +9,8 @@ import {
 
 /**
  * 读取提示词文件内容
- * 相对路径基于 process.cwd() 解析，绝对路径直接使用
- * @param {string} filePath - 文件路径（相对或绝对）
+ * 相对路径基于 process.cwd() 解析，绝对路径直接使用，~ 展开为用户主目录
+ * @param {string} filePath - 文件路径（相对、绝对或 ~ 开头）
  * @returns {string} 文件内容
  */
 function readPromptFile(filePath) {
@@ -40,8 +40,13 @@ function readPromptFile(filePath) {
  *   --append-system-prompt-file ./my-prompt.txt   （空格分隔）
  *   --append-system-prompt-file=./my-prompt.txt   （等号分隔）
  *
- * 相对路径基于 process.cwd() 解析。
- * 支持多次使用 --append-system-prompt-file，每次生成独立的 --append-system-prompt 参数。
+ * 相对路径基于 process.cwd() 解析，~ 展开为用户主目录。
+ * 支持多次使用 --append-system-prompt-file。
+ *
+ * 重要：Claude Code 不支持多次 --append-system-prompt 调用，
+ * 因此多次 --append-system-prompt-file 的内容会合并到一个 --append-system-prompt 中，
+ * 各文件内容之间用换行符分隔。
+ *
  * 其他参数原样透传，不受影响。
  *
  * @param {string[]} args - 原始命令行参数数组
@@ -49,6 +54,7 @@ function readPromptFile(filePath) {
  */
 export function resolvePromptFileArgs(args) {
   const result = [];
+  const promptContents = [];
   let i = 0;
 
   while (i < args.length) {
@@ -61,8 +67,7 @@ export function resolvePromptFileArgs(args) {
         console.error(ERROR_MSG.MISSING_FILE_PATH);
         process.exit(1);
       }
-      const content = readPromptFile(filePath);
-      result.push(ARG_APPEND_SYSTEM_PROMPT, content);
+      promptContents.push(readPromptFile(filePath));
       i += 1;
       continue;
     }
@@ -75,8 +80,7 @@ export function resolvePromptFileArgs(args) {
         console.error(ERROR_MSG.MISSING_FILE_PATH);
         process.exit(1);
       }
-      const content = readPromptFile(filePath);
-      result.push(ARG_APPEND_SYSTEM_PROMPT, content);
+      promptContents.push(readPromptFile(filePath));
       i += 2;
       continue;
     }
@@ -84,6 +88,11 @@ export function resolvePromptFileArgs(args) {
     // 其他参数原样透传
     result.push(arg);
     i += 1;
+  }
+
+  // Claude Code 不支持多次 --append-system-prompt，合并所有内容到一个参数中
+  if (promptContents.length > 0) {
+    result.unshift(ARG_APPEND_SYSTEM_PROMPT, promptContents.join('\n'));
   }
 
   return result;
