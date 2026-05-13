@@ -40,7 +40,7 @@ class Config:
 
         # Connection settings
         self.request_timeout = int(os.environ.get("REQUEST_TIMEOUT", "90"))
-        self.read_timeout = int(os.environ.get("READ_TIMEOUT", "240"))
+        self.read_timeout = int(os.environ.get("READ_TIMEOUT", "480"))
         self.max_retries = int(os.environ.get("MAX_RETRIES", "2"))
 
         # Model settings - BIG and SMALL models
