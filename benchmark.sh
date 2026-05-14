@@ -101,15 +101,32 @@ if [[ ${#MODELS[@]} -eq 0 ]]; then
     exit 1
 fi
 
+# ── 显示测试概要 ──
+echo "Benchmark 模型测速"
+echo "─────────────────"
+echo "模型数量: ${#MODELS[@]}  并发数: ${CONCURRENCY}  prompt=\"${PROMPT}\"  max_tokens=${MAX_TOKENS}"
+echo "上游: ${BASE_URL}"
+echo ""
+
 # ── 并发执行测速 ──
 # 后台任务只做 curl，主进程读取结果
 TEMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TEMP_DIR"' EXIT
 
 BATCH_START=0
+BATCH_NUM=0
+TOTAL_BATCHES=$(( (${#MODELS[@]} + CONCURRENCY - 1) / CONCURRENCY ))
 while [[ $BATCH_START -lt ${#MODELS[@]} ]]; do
     BATCH_END=$((BATCH_START + CONCURRENCY))
     [[ $BATCH_END -gt ${#MODELS[@]} ]] && BATCH_END=${#MODELS[@]}
+    BATCH_NUM=$((BATCH_NUM + 1))
+
+    echo -n "测速中 [${BATCH_NUM}/${TOTAL_BATCHES}]"
+    for i in $(seq $BATCH_START $((BATCH_END - 1))); do
+        model="${MODELS[$i]}"
+        echo -n "  ${model}"
+    done
+    echo " ..."
 
     for i in $(seq $BATCH_START $((BATCH_END - 1))); do
         model="${MODELS[$i]}"
@@ -130,6 +147,40 @@ while [[ $BATCH_START -lt ${#MODELS[@]} ]]; do
 
     BATCH_START=$BATCH_END
 done
+
+echo "测速完成，正在汇总结果..."
+echo ""
+
+# ── 显示宽度计算（修正 CJK 双宽字符对齐） ──
+# printf 按字符计数，但 CJK/全角字符占 2 个终端列
+# 使用 python3 的 unicodedata.east_asian_width 精确计算
+visual_width() {
+    printf '%s' "$1" | python3 -c '
+import sys, unicodedata
+s = sys.stdin.read()
+print(sum(2 if unicodedata.east_asian_width(c) in ("W", "F") else 1 for c in s))
+'
+}
+
+# 左对齐：字符串 + 补齐空格
+pad_left() {
+    local s="$1" w="$2"
+    local vw
+    vw=$(visual_width "$s")
+    local pad=$(( w - vw ))
+    [[ $pad -lt 0 ]] && pad=0
+    printf '%s%*s' "$s" "$pad" ""
+}
+
+# 右对齐：补齐空格 + 字符串
+pad_right() {
+    local s="$1" w="$2"
+    local vw
+    vw=$(visual_width "$s")
+    local pad=$(( w - vw ))
+    [[ $pad -lt 0 ]] && pad=0
+    printf '%*s%s' "$pad" "" "$s"
+}
 
 # ── 解析结果 ──
 RESULTS=()
@@ -264,8 +315,9 @@ done
 COL1_W=14; COL2_W=36; COL3_W=9; COL4_W=24
 for row in "${ROWS[@]}"; do
     IFS='|' read -r c1 c2 c3 c4 <<< "$row"
-    [[ ${#c2} -gt $COL2_W ]] && COL2_W=${#c2}
-    [[ ${#c4} -gt $COL4_W ]] && COL4_W=${#c4}
+    [[ $(visual_width "$c1") -gt $COL1_W ]] && COL1_W=$(visual_width "$c1")
+    [[ $(visual_width "$c2") -gt $COL2_W ]] && COL2_W=$(visual_width "$c2")
+    [[ $(visual_width "$c4") -gt $COL4_W ]] && COL4_W=$(visual_width "$c4")
 done
 
 # 绘制
@@ -283,8 +335,15 @@ draw_sep() {
 }
 
 draw_row() {
-    printf '│ %-*s │ %-*s │ %*s │ %-*s │\n' \
-        "$COL1_W" "$1" "$COL2_W" "$2" "$COL3_W" "$3" "$COL4_W" "$4"
+    printf '│ '
+    pad_left "$1" "$COL1_W"
+    printf ' │ '
+    pad_left "$2" "$COL2_W"
+    printf ' │ '
+    pad_right "$3" "$COL3_W"
+    printf ' │ '
+    pad_left "$4" "$COL4_W"
+    printf ' │\n'
 }
 
 draw_sep '┌' '┬' '┐'
