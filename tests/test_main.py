@@ -5,7 +5,7 @@ import json
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 async def test_basic_chat():
