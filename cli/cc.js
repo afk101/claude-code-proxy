@@ -7,6 +7,21 @@ import { detectRunningProxies } from './process-detector.js';
 import { resolvePromptFileArgs } from './prompt-file-resolver.js';
 
 /**
+ * 构建 claude 子进程的环境变量
+ * 当 ANTHROPIC_API_KEY 和 ANTHROPIC_AUTH_TOKEN 都不存在时，注入默认的 ANTHROPIC_AUTH_TOKEN
+ * @param {Record<string, string|undefined>} baseEnv - 基础环境变量
+ * @param {string} baseUrl - 代理地址
+ * @returns {Record<string, string|undefined>} 合并后的环境变量
+ */
+function buildClaudeEnv(baseEnv, baseUrl) {
+  const env = { ...baseEnv, ANTHROPIC_BASE_URL: baseUrl };
+  if (!baseEnv.ANTHROPIC_API_KEY && !baseEnv.ANTHROPIC_AUTH_TOKEN) {
+    env.ANTHROPIC_AUTH_TOKEN = 'claude_code_proxy_inject';
+  }
+  return env;
+}
+
+/**
  * 连接到指定端口的代理
  * @param {number} port - 代理端口
  * @param {string[]} args - 透传给 claude 的命令行参数
@@ -16,7 +31,7 @@ function connectToProxy(port, args = []) {
   console.log(`连接到代理: ${baseUrl}\n`);
   spawn('claude', args, {
     stdio: 'inherit',
-    env: { ...process.env, ANTHROPIC_BASE_URL: baseUrl },
+    env: buildClaudeEnv(process.env, baseUrl),
   });
 }
 
