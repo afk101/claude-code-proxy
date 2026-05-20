@@ -7,6 +7,7 @@ MODEL_TOKENS_MAP = {
     "copilotcode-15": 200000,
     "copilotcode-14": 200000,
     "copilotcode-13": 200000,
+    "google/gemini-3.5-flash":1000000,
     "lyra-flash-11": 1000000,
     "cortex-18": 1000000,
     "cortex-17": 1000000,
