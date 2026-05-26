@@ -16,6 +16,7 @@ MODEL_TOKENS_MAP = {
     "moonshotai/kimi-k2.6": 262144,
     "deepseek/deepseek-v4-pro": 1000000,
     "minimax-m2.7-highspeed": 200000,
+    "qwen/qwen3.7-max": 1000000,
 }
 
 
