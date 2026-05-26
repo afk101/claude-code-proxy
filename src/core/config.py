@@ -7,14 +7,15 @@ MODEL_TOKENS_MAP = {
     "copilotcode-15": 200000,
     "copilotcode-14": 200000,
     "copilotcode-13": 200000,
-    "google/gemini-3.5-flash":1000000,
+    "google/gemini-3.5-flash": 1000000,
     "lyra-flash-11": 1000000,
     "cortex-18": 1000000,
     "cortex-17": 1000000,
     "z-ai/glm-5.1": 200000,
     "glm-5": 200000,
-    "moonshotai/kimi-k2.6":262144,
-    "deepseek/deepseek-v4-pro":1000000,
+    "moonshotai/kimi-k2.6": 262144,
+    "deepseek/deepseek-v4-pro": 1000000,
+    "minimax-m2.7-highspeed": 200000,
 }
 
 
