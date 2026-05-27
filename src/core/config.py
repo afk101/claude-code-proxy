@@ -17,6 +17,7 @@ MODEL_TOKENS_MAP = {
     "deepseek/deepseek-v4-pro": 1000000,
     "minimax-m2.7-highspeed": 200000,
     "qwen/qwen3.7-max": 1000000,
+    "qwen3.6-plus": 1000000,
 }
 
 
