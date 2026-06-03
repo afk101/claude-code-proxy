@@ -3,6 +3,7 @@ import sys
 
 # 模型到 MAX_TOKENS_LIMIT 的映射
 MODEL_TOKENS_MAP = {
+    "anthropic/claude-opus-4.8": 200000,
     "copilotcode-16": 200000,
     "copilotcode-15": 200000,
     "copilotcode-14": 200000,
@@ -15,6 +16,7 @@ MODEL_TOKENS_MAP = {
     "glm-5": 200000,
     "moonshotai/kimi-k2.6": 262144,
     "deepseek/deepseek-v4-pro": 1000000,
+    "minimax/minimax-m3": 512000,
     "minimax-m2.7-highspeed": 200000,
     "qwen/qwen3.7-max": 1000000,
     "kimi-k2.5": 256000,
