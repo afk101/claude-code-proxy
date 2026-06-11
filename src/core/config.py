@@ -3,6 +3,7 @@ import sys
 
 # 模型到 MAX_TOKENS_LIMIT 的映射
 MODEL_TOKENS_MAP = {
+    "anthropic/claude-fable-5": 200000,
     "anthropic/claude-opus-4.8": 200000,
     "copilotcode-16": 200000,
     "copilotcode-15": 200000,
