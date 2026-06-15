@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class OpenAIClient:
     """Async OpenAI client with cancellation support."""
     
-    def __init__(self, api_key: str, base_url: str, timeout: int = 90, read_timeout: int = 240, api_version: Optional[str] = None, custom_headers: Optional[Dict[str, str]] = None):
+    def __init__(self, api_key: str, base_url: str, timeout: int = 90, read_timeout: int = 480, api_version: Optional[str] = None, custom_headers: Optional[Dict[str, str]] = None):
         self.api_key = api_key
         self.base_url = base_url
         self.custom_headers = custom_headers or {}

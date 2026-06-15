@@ -3,16 +3,26 @@ import sys
 
 # 模型到 MAX_TOKENS_LIMIT 的映射
 MODEL_TOKENS_MAP = {
+    "anthropic/claude-fable-5": 200000,
+    "anthropic/claude-opus-4.8": 200000,
+    "copilotcode-16": 200000,
     "copilotcode-15": 200000,
     "copilotcode-14": 200000,
     "copilotcode-13": 200000,
+    "google/gemini-3.5-flash": 1000000,
     "lyra-flash-11": 1000000,
-    "lyra-flash-6": 1000000,
+    "cortex-18": 1000000,
     "cortex-17": 1000000,
-    "cortex-16": 400000,
-    "cortex-15":400000,
-    "cortex-12":200000
+    "z-ai/glm-5.1": 200000,
+    "glm-5": 200000,
+    "moonshotai/kimi-k2.6": 262144,
+    "deepseek/deepseek-v4-pro": 1000000,
+    "minimax/minimax-m3": 512000,
+    "minimax-m2.7-highspeed": 200000,
+    "qwen/qwen3.7-max": 1000000,
+    "kimi-k2.5": 256000,
 }
+
 
 # Configuration
 class Config:
@@ -20,13 +30,13 @@ class Config:
         self.openai_api_key = os.environ.get("OPENAI_API_KEY")
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY not found in environment variables")
-        
+
         # Add Proxy API key for client validation
         # We use PROXY_API_KEY instead of ANTHROPIC_API_KEY to avoid conflicts with client tools
         self.client_api_key = os.environ.get("PROXY_API_KEY")
         if not self.client_api_key:
             print("Warning: PROXY_API_KEY not set. Client API key validation will be disabled.")
-        
+
         self.openai_base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
         self.azure_api_version = os.environ.get("AZURE_API_VERSION")  # For Azure OpenAI
         self.host = os.environ.get("HOST", "0.0.0.0")
@@ -34,12 +44,12 @@ class Config:
         self.log_level = os.environ.get("LOG_LEVEL", "INFO")
         self.max_tokens_limit = int(os.environ.get("MAX_TOKENS_LIMIT", "4096"))
         self.min_tokens_limit = int(os.environ.get("MIN_TOKENS_LIMIT", "100"))
-        
+
         # Connection settings
         self.request_timeout = int(os.environ.get("REQUEST_TIMEOUT", "90"))
-        self.read_timeout = int(os.environ.get("READ_TIMEOUT", "240"))
+        self.read_timeout = int(os.environ.get("READ_TIMEOUT", "480"))
         self.max_retries = int(os.environ.get("MAX_RETRIES", "2"))
-        
+
         # Model settings - BIG and SMALL models
         self.big_model = os.environ.get("BIG_MODEL", "gpt-4o")
         self.middle_model = os.environ.get("MIDDLE_MODEL", self.big_model)
@@ -57,45 +67,46 @@ class Config:
         if self.auto_tokens_mode and model in MODEL_TOKENS_MAP:
             return MODEL_TOKENS_MAP[model]
         return self.max_tokens_limit
-        
+
     def validate_api_key(self):
         """Basic API key validation"""
         if not self.openai_api_key:
             return False
         # Basic format check for OpenAI API keys
-        if not self.openai_api_key.startswith('sk-'):
+        if not self.openai_api_key.startswith("sk-"):
             return False
         return True
-        
+
     def validate_client_api_key(self, client_api_key):
         """Validate client's API key"""
         # If no PROXY_API_KEY is set in environment, skip validation
         if not self.client_api_key:
             return True
-            
+
         # Check if the client's API key matches the expected value
         return client_api_key == self.client_api_key
-    
+
     def get_custom_headers(self):
         """Get custom headers from environment variables"""
         custom_headers = {}
-        
+
         # Get all environment variables
         env_vars = dict(os.environ)
-        
+
         # Find CUSTOM_HEADER_* environment variables
         for env_key, env_value in env_vars.items():
-            if env_key.startswith('CUSTOM_HEADER_'):
+            if env_key.startswith("CUSTOM_HEADER_"):
                 # Convert CUSTOM_HEADER_KEY to Header-Key
                 # Remove 'CUSTOM_HEADER_' prefix and convert to header format
                 header_name = env_key[14:]  # Remove 'CUSTOM_HEADER_' prefix
-                
+
                 if header_name:  # Make sure it's not empty
                     # Convert underscores to hyphens for HTTP header format
-                    header_name = header_name.replace('_', '-')
+                    header_name = header_name.replace("_", "-")
                     custom_headers[header_name] = env_value
-        
+
         return custom_headers
+
 
 try:
     config = Config()

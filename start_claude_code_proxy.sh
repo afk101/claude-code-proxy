@@ -8,6 +8,7 @@ show_help() {
     echo "  -h, --help     显示帮助信息"
     echo "  -auto          根据模型自动设置 MAX_TOKENS_LIMIT (映射配置在 src/core/config.py)"
     echo "  -i, --interactive  交互式多代理管理模式，选择要启动的代理"
+    echo "  -b, --benchmark  测量各模型 TTFB 和响应速度，参数透传给 benchmark.sh"
     echo "  -d, --daemon   守护模式运行，服务退出后自动重启"
     echo ""
     echo "环境变量覆盖:"
@@ -18,7 +19,7 @@ show_help() {
     echo "  ccc                              # 使用 .env 默认配置启动"
     echo "  ccc -d                           # 守护模式，服务退出后自动重启"
     echo "  ccc MAX_TOKENS_LIMIT=1000000      # 覆盖 MAX_TOKENS_LIMIT"
-    echo "  ccc MAX_TOKENS_LIMIT=1000000 BIG_MODEL=lyra-flash-6 MIDDLE_MODEL=lyra-flash-6 SMALL_MODEL=lyra-flash-6   # 覆盖多个变量"
+    echo "  ccc -auto PORT=xxx BIG_MODEL=xxx MIDDLE_MODEL=xxx SMALL_MODEL=xxx MAX_TOKENS_LIMIT=xxx"
     echo ""
     echo "可覆盖的变量 (参考 .env 文件):"
     echo "  BIG_MODEL, MIDDLE_MODEL, SMALL_MODEL"
@@ -30,6 +31,8 @@ show_help() {
 # 模式标志
 DAEMON_MODE=false
 INTERACTIVE_MODE=false
+BENCHMARK_MODE=false
+BENCHMARK_ARGS=()
 
 # 解析命令行参数
 parse_args() {
@@ -42,6 +45,9 @@ parse_args() {
             -i|--interactive)
                 INTERACTIVE_MODE=true
                 ;;
+            -b|--benchmark)
+                BENCHMARK_MODE=true
+                ;;
             -d|--daemon)
                 DAEMON_MODE=true
                 echo "启用守护模式: 服务退出后将自动重启"
@@ -50,13 +56,26 @@ parse_args() {
                 export AUTO_TOKENS_MODE=true
                 echo "启用 auto 模式: 将根据模型自动设置 MAX_TOKENS_LIMIT"
                 ;;
+            --prompt|--max-tokens|--concurrency|--format)
+                # benchmark 子命令的带值参数，透传
+                BENCHMARK_ARGS+=("$arg")
+                ;;
+            --prompt=*|--max-tokens=*|--concurrency=*|--format=*)
+                # benchmark 子命令的等号赋值参数，透传
+                BENCHMARK_ARGS+=("$arg")
+                ;;
             *=*)
                 # 格式: VAR=VALUE，导出为环境变量
                 export "$arg"
                 echo "覆盖环境变量: $arg"
                 ;;
             *)
-                echo "警告: 忽略未知参数: $arg"
+                # benchmark 模式下未知参数视为 benchmark.sh 的参数透传
+                if [ "$BENCHMARK_MODE" = true ]; then
+                    BENCHMARK_ARGS+=("$arg")
+                else
+                    echo "警告: 忽略未知参数: $arg"
+                fi
                 ;;
         esac
     done
@@ -96,6 +115,11 @@ cd "$PROJECT_ROOT_DIR" || {
     echo "错误: 无法切换到目录: $PROJECT_ROOT_DIR"
     exit 1
 }
+
+# benchmark 模式：测速各模型，直接调用 benchmark.sh
+if [ "$BENCHMARK_MODE" = true ]; then
+    exec bash "$PROJECT_ROOT_DIR/benchmark.sh" "${BENCHMARK_ARGS[@]}"
+fi
 
 # 交互模式：启动多代理管理界面
 if [ "$INTERACTIVE_MODE" = true ]; then

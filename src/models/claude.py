@@ -5,6 +5,10 @@ class ClaudeContentBlockText(BaseModel):
     type: Literal["text"]
     text: str
 
+class ClaudeContentBlockThinking(BaseModel):
+    type: Literal["thinking"]
+    thinking: str
+
 class ClaudeContentBlockImage(BaseModel):
     type: Literal["image"]
     source: Dict[str, Any]
@@ -25,8 +29,8 @@ class ClaudeSystemContent(BaseModel):
     text: str
 
 class ClaudeMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: Union[str, List[Union[ClaudeContentBlockText, ClaudeContentBlockImage, ClaudeContentBlockToolUse, ClaudeContentBlockToolResult]]]
+    role: Literal["user", "assistant", "system"]
+    content: Union[str, List[Union[ClaudeContentBlockText, ClaudeContentBlockThinking, ClaudeContentBlockImage, ClaudeContentBlockToolUse, ClaudeContentBlockToolResult]]]
 
 class ClaudeTool(BaseModel):
     """Custom tool with input_schema (e.g., function-calling tools)."""

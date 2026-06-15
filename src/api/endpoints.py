@@ -161,7 +161,7 @@ async def count_tokens(request: ClaudeTokenCountRequest, _: None = Depends(valid
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/health")
+@router.api_route("/health", methods=["GET", "HEAD"])
 async def health_check():
     """Health check endpoint"""
     return {
@@ -212,7 +212,7 @@ async def test_connection():
         )
 
 
-@router.get("/")
+@router.api_route("/", methods=["GET", "HEAD"])
 async def root():
     """Root endpoint"""
     return {

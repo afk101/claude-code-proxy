@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from src.api.endpoints import router as api_router
 import uvicorn
 import sys
@@ -23,6 +23,21 @@ class EndpointFilter(logging.Filter):
 app = FastAPI(title="Claude-to-OpenAI API Proxy", version="1.0.0")
 
 app.include_router(api_router)
+
+# 请求日志中间件 - 记录异常响应（4xx/5xx），方便排查问题
+request_logger = logging.getLogger("proxy.request")
+
+
+@app.middleware("http")
+async def log_abnormal_responses(request: Request, call_next):
+    """记录所有非正常响应的请求详情，方便快速定位问题"""
+    response = await call_next(request)
+    if response.status_code >= 400:
+        request_logger.warning(
+            f"异常响应: {request.method} {request.url.path} -> {response.status_code} "
+            f"(客户端: {request.client.host if request.client else 'unknown'})"
+        )
+    return response
 
 
 def main():
