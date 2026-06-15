@@ -61,6 +61,8 @@ def convert_claude_to_openai(
         if msg.role == Constants.ROLE_USER:
             openai_message = convert_claude_user_message(msg)
             openai_messages.append(openai_message)
+        elif msg.role == Constants.ROLE_SYSTEM:
+            openai_messages.append(convert_claude_system_message(msg))
         elif msg.role == Constants.ROLE_ASSISTANT:
             openai_message = convert_claude_assistant_message(msg, openai_model)
             openai_messages.append(openai_message)
@@ -142,6 +144,26 @@ def convert_claude_to_openai(
             openai_request["tool_choice"] = "auto"
 
     return openai_request
+
+
+def convert_claude_system_message(msg: ClaudeMessage) -> Dict[str, Any]:
+    """Convert an inline Claude system message to OpenAI format.
+
+    Some clients (e.g. the Claude Code VS Code extension) place a `system`
+    role message inside the `messages` array rather than the top-level
+    `system` field. Fold it into an OpenAI system message so downstream
+    OpenAI-compatible APIs receive a valid role.
+    """
+    if isinstance(msg.content, str):
+        text = msg.content
+    else:
+        text_parts = []
+        for block in msg.content:
+            if getattr(block, "type", None) == Constants.CONTENT_TEXT:
+                text_parts.append(block.text)
+        text = "\n\n".join(text_parts)
+
+    return {"role": Constants.ROLE_SYSTEM, "content": text}
 
 
 def convert_claude_user_message(msg: ClaudeMessage) -> Dict[str, Any]:

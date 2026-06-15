@@ -29,7 +29,7 @@ class ClaudeSystemContent(BaseModel):
     text: str
 
 class ClaudeMessage(BaseModel):
-    role: Literal["user", "assistant"]
+    role: Literal["user", "assistant", "system"]
     content: Union[str, List[Union[ClaudeContentBlockText, ClaudeContentBlockThinking, ClaudeContentBlockImage, ClaudeContentBlockToolUse, ClaudeContentBlockToolResult]]]
 
 class ClaudeTool(BaseModel):
